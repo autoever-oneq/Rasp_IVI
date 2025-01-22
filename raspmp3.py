@@ -12,6 +12,11 @@ CmdLength = 0x06
 Feedback = 0x00  # No Feedback
 EndByte = 0xEF
 
+# track 1 : lock, unlock
+# track 2 : power on
+# track 3 : door open 
+# track 4 : door close 
+
 # 명령어 전송 함수
 def DFSendCmd(cmd, param1=0, param2=0):
     """DFPlayer Mini에 명령어 전송"""
@@ -38,8 +43,9 @@ def DFInit():
     time.sleep(0.2)
     DFSendInitialConfig()  # SD 카드 선택
     time.sleep(1)
-    DFSetVolume(10)   # 볼륨 설정 (0~30)
+    DFSetVolume(20)   # 볼륨 설정 (0~30)
     time.sleep(0.2)
+
 
 def DFPlay():
    DFSendCmd(0x0D, 0, 0)
@@ -68,5 +74,5 @@ if __name__ == "__main__":
     
     DFInit()   # 초기화 및 볼륨 설정
  #   time.sleep(0.2)
-    DFPlayTrack(4)
+    DFPlayTrack(2)
 
