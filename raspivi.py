@@ -4,6 +4,7 @@ import serial
 from threading import Lock
 import time
 import traceback
+from raspmp3 import DFInit, DFPlayTrack
 
 app = Flask(__name__)
 
@@ -30,6 +31,31 @@ ser = serial.Serial(
     timeout=1
 )
 
+def door_sound(previous_lock_status, previous_open_status, door_lock_status, door_open_status):
+
+    if previous_lock_status == 1 and previous_open_status == 0 and door_lock_status == 0 and door_open_status == 0:
+        # (1, 0) → (0, 0): 잠금 해제
+        DFPlayTrack(1)
+    elif previous_lock_status == 1 and previous_open_status == 0 and door_lock_status == 1 and door_open_status == 1:
+        # (1, 0) → (1, 1): 문 열림
+        DFPlayTrack(3)
+    elif previous_lock_status == 0 and previous_open_status == 0 and door_lock_status == 1 and door_open_status == 0:
+        # (0, 0) → (1, 0): 잠금
+        DFPlayTrack(1)
+    elif previous_lock_status == 1 and previous_open_status == 1 and door_lock_status == 1 and door_open_status == 0:
+        # (1, 1) → (1, 0): 문 닫힘
+        DFPlayTrack(4)
+    elif previous_lock_status == 0 and previous_open_status == 0 and door_lock_status == 1 and door_open_status == 1:
+        # (0, 0) → (1, 1): 잠금 후 열림
+        DFPlayTrack(1)
+        time.sleep(1)
+        DFPlayTrack(3)
+    elif previous_lock_status == 1 and previous_open_status == 1 and door_lock_status == 0 and door_open_status == 0:
+        # (1, 1) → (0, 0): 닫힘 후 잠금 해제
+        DFPlayTrack(4)
+        time.sleep(1)
+        DFPlayTrack(1)
+
 def handle_door_status(chunk):
     #  0x20, 0x00, 0x01
 
@@ -53,10 +79,12 @@ def handle_door_status(chunk):
     if doors_status[door_id][0] == door_lock_status and doors_status[door_id][1] == door_open_status:
         return
 
-    # 문 열려있을때, 잠금 시도하는 경우 고려?   
+    previous_lock_status, previous_open_status = doors_status[door_id]
 
     doors_status[door_id][0] = door_lock_status
     doors_status[door_id][1] = door_open_status
+
+    door_sound(previous_lock_status, previous_open_status, door_lock_status, door_open_status)
 
     socketio.emit('handleDoorStatus', {
         'door_id': door_id,
@@ -93,7 +121,7 @@ def handle_vehicle_control(chunk): # 0xB0
     if power_status == 0: # power off
         print("off signal")
     else :                # power on
-        print("on signal")
+        DFPlayTrack(2)
 
     socketio.emit('powerStatusUpdate', {'status': power_status})
 
@@ -208,6 +236,8 @@ def connect():
         if thread is None:
             thread = socketio.start_background_task(uart_receive)
 
+    DFInit()
+
     socketio.emit('initialize', doors_status)
 
 @socketio.on('disconnect')
@@ -220,3 +250,4 @@ def door():
 
 if __name__ == '__main__':        
     socketio.run(app=app, host="0.0.0.0", port=5000, allow_unsafe_werkzeug=True)
+
