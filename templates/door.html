@@ -141,11 +141,11 @@
         <div class="power" id="power-status">Power Off</div>
         <div class="top-row">
             <div class="door" id="door-1">Door 1</div>
-            <div class="lock" id="lock-1">Lock 1</div>
+            <div class="lock" id="lock">Lock</div>
         </div>
         <div class="bottom-row">
             <div class="door" id="door-2">Door 2</div>
-            <div class="lock" id="lock-2">Lock 2</div>
+            <div class="lock" id="unlock">unLock</div>
         </div>
     </div>
 
@@ -177,20 +177,20 @@
                     console.warn(`Door element with ID door-${doorId} not found.`);
                 }
 
-                const lockElement = document.getElementById(`lock-${doorId}`);
-                if (lockElement) {
-                    if (doorLockStatus === 1) {
-                        lockElement.classList.remove("locked");
-                        lockElement.classList.add("unlocked");
-                        lockElement.textContent = "Unlocked";
-                    } else if (doorLockStatus === 0) {
-                        lockElement.classList.remove("unlocked");
-                        lockElement.classList.add("locked");
-                        lockElement.textContent = "Locked";
-                    }
-                } else {
-                    console.warn(`Lock element with ID lock-${doorId} not found.`);
-                }
+                // const lockElement = document.getElementById(`lock-${doorId}`);
+                // if (lockElement) {
+                //     if (doorLockStatus === 1) {
+                //         lockElement.classList.remove("locked");
+                //         lockElement.classList.add("unlocked");
+                //         lockElement.textContent = "Unlocked";
+                //     } else if (doorLockStatus === 0) {
+                //         lockElement.classList.remove("unlocked");
+                //         lockElement.classList.add("locked");
+                //         lockElement.textContent = "Locked";
+                //     }
+                // } else {
+                //     console.warn(`Lock element with ID lock-${doorId} not found.`);
+                // }
             }
         });
 
@@ -202,7 +202,7 @@
             const doorOpenStatus = data.door_open_status;
 
             const doorElement = document.getElementById(`door-${doorId}`);
-            const lockElement = document.getElementById(`lock-${doorId}`);
+            // const lockElement = document.getElementById(`lock-${doorId}`);
 
             if (doorElement) {
                 if (doorOpenStatus === 1) {
@@ -214,19 +214,19 @@
                 console.warn(`Door element with ID ${doorId} not found.`);
             }
 
-            if (lockElement) {
-                if (doorLockStatus === 1) {
-                    lockElement.classList.remove("locked");
-                    lockElement.classList.add("unlocked");
-                    lockElement.textContent = "Unlocked";
-                } else if (doorLockStatus === 0) {
-                    lockElement.classList.remove("unlocked");
-                    lockElement.classList.add("locked");
-                    lockElement.textContent = "Locked";
-                }
-            } else {
-                console.warn(`Lock element with ID lock-${doorId} not found.`);
-            }
+            // if (lockElement) {
+            //     if (doorLockStatus === 1) {
+            //         lockElement.classList.remove("locked");
+            //         lockElement.classList.add("unlocked");
+            //         lockElement.textContent = "Unlocked";
+            //     } else if (doorLockStatus === 0) {
+            //         lockElement.classList.remove("unlocked");
+            //         lockElement.classList.add("locked");
+            //         lockElement.textContent = "Locked";
+            //     }
+            // } else {
+            //     console.warn(`Lock element with ID lock-${doorId} not found.`);
+            // }
         });
 
         socket.on("digitalKey", function (msg) {
@@ -262,7 +262,6 @@
             return elementId.split('-')[1];
         }
 
-        // 
         document.querySelectorAll('.door').forEach(door => {
         door.addEventListener('click', () => {
        
@@ -272,13 +271,14 @@
             });
         });
 
-        document.querySelectorAll('.lock').forEach(door => {
-        door.addEventListener('click', () => {
-       
-            const doorId = getDoorIdFromElement(door.id); 
+        document.getElementById('lock').addEventListener('click', () => {
+            console.log('lock button clicked'); 
+            socket.emit('lockCommand'); 
+        });
 
-            socket.emit('lockCommand', { door_id: doorId });
-            });
+        document.getElementById('unlock').addEventListener('click', () => {
+            console.log('Unlock button clicked'); 
+            socket.emit('unlockCommand'); 
         });
 
         document.querySelectorAll('.power').forEach(door => {
@@ -302,6 +302,14 @@
         });
 
         socket.on('lockCommandError', function (data) {
+            console.error('Lock Command failed:', data);
+        });
+
+        socket.on('unlockCommandSuccess', function (data) {
+            console.log('Lock Command successful:', data);
+        });
+
+        socket.on('unlockCommandError', function (data) {
             console.error('Lock Command failed:', data);
         });
 
