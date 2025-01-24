@@ -14,20 +14,25 @@ thread = None
 thread_lock = Lock()
 
 # val
+# doors_status = {
+#     "1": [1,0],  # 1번문 잠금 닫혀있음 
+#     "2": [1,0],  # 2번문 잠금 닫혀있음 
+# }
+
 doors_status = {
-    "1": [1,0],  # 1번문 잠금 닫혀있음 
-    "2": [1,0],  # 2번문 잠금 닫혀있음 
+    1: [1,0],  # 1번문 잠금 닫혀있음 
+    2: [1,0],  # 2번문 잠금 닫혀있음 
 }
 
 power_status = 0
 
 COMMANDS = {
-    "lock": [0x10, 0x03],          
-    "unlock": [0x11, 0x03],        
-    "open_door": lambda door_id: [0x12, door_id],  
-    "close_door": lambda door_id: [0x13, door_id], 
-    "power_on": [0xB1],       
-    "power_off": [0xB0],        
+    "lock": [0x10, 0x03, 0xFF],          
+    "unlock": [0x11, 0x03, 0xFF],        
+    "open_door": lambda door_id: [0x12, door_id, 0xFF],  
+    "close_door": lambda door_id: [0x13, door_id, 0xFF], 
+    "power_on": [0xB1, 0xFF],       
+    "power_off": [0xB0, 0xFF],        
 }
 
 # UART 포트 및 설정
@@ -71,29 +76,63 @@ def handle_door_status(chunk):
     if len(chunk) != 3: # error 
         raise ValueError(f"Invalid chunk length for door status: {len(chunk)}")
 
-    door_id = str(chunk[1])
+    door_id = chunk[1]
     door_lock_status = (chunk[2] >> 4) & 0x0F
     door_open_status = chunk[2] & 0x0F
-
-    if door_id not in doors_status:
-        raise ValueError(f"Invalid door_id: {door_id} (Not found in doors_status)")
+    
     if door_lock_status not in [0, 1]:
-        raise ValueError(f"Invalid door_lock_status: {door_lock_status} (Expected 0 or 1)")
+            raise ValueError(f"Invalid door_lock_status: {door_lock_status} (Expected 0 or 1)")
     if door_open_status not in [0, 1]:
         raise ValueError(f"Invalid door_open_status: {door_open_status} (Expected 0 or 1)")
     if door_lock_status == 0 and door_open_status == 1:
-        raise ValueError(f"Invalid status [{door_lock_status}:{door_open_status}] ")
-
+            raise ValueError(f"Invalid status [{door_lock_status}:{door_open_status}]")
+    
+    if(door_id == 0x03):
+        
+        can_lock_flag = True
+        
+        ## 1. 모든 문 상태 확인 
+        for each_id in [1, 2]:
+            
+            # 문 열려있을때, 잠금 신호
+            if door_lock_status == 0 and door_open_status == 0 and doors_status[each_id][1] == 1:
+                can_lock_flag = False
+                return
+        
+        if not can_lock_flag:
+            return
+        
+        ## 2. 상태 업데이트 
+        for each_id in [1, 2]:    
+            doors_status[each_id] = [door_lock_status, door_open_status]
+            print(f"each_id: {each_id}, value: {doors_status[each_id]}")
+            
+        # 잠금      (0, 0) -> (1, 0)  {0x20 0x03 0x10}
+        # 잠금 해제 (1, 0) -> (0, 0)  {0x20 0x03 0x00}
+        DFPlayTrack(1)
+        
+        # 잠금해제 + 문  (0, 0) -> (1, 1) {0x20 0x03 0x11}
+        # 잠금해제 + 문  (1, 1) -> (0, 0) {0x20 0x03 0x00}
+        
+          
+    else : # 문 열기 
+        if door_id not in doors_status:
+            raise ValueError(f"Invalid door_id: {door_id} (Not found in doors_status)")
+        
+    
     # 현재 상태와 같을 경우
-    if doors_status[door_id][0] == door_lock_status and doors_status[door_id][1] == door_open_status:
-        return
+        if doors_status[door_id][0] == door_lock_status and doors_status[door_id][1] == door_open_status:
+            return
 
-    previous_lock_status, previous_open_status = doors_status[door_id]
+        previous_lock_status, previous_open_status = doors_status[door_id]
 
-    doors_status[door_id][0] = door_lock_status
-    doors_status[door_id][1] = door_open_status
+        doors_status[door_id][0] = door_lock_status
+        doors_status[door_id][1] = door_open_status
 
-    door_sound(previous_lock_status, previous_open_status, door_lock_status, door_open_status)
+        door_sound(previous_lock_status, previous_open_status, door_lock_status, door_open_status)
+        
+        print(f"doors_status >> Lock Status: {doors_status[door_id][0]}, Door Status: {doors_status[door_id][1]}")
+        print(f"Door ID: {door_id}, Lock Status: {door_lock_status}, Door Status: {door_open_status}")
 
     socketio.emit('handleDoorStatus', {
         'door_id': door_id,
@@ -101,8 +140,7 @@ def handle_door_status(chunk):
         'door_open_status': door_open_status
     })
     
-    print(f"doors_status >> Lock Status: {doors_status[door_id][0]}, Door Status: {doors_status[door_id][1]}")
-    print(f"Door ID: {door_id}, Lock Status: {door_lock_status}, Door Status: {door_open_status}")
+    
 
 
 def handle_digital_key(chunk):
@@ -267,7 +305,7 @@ def close_door_rest():
 @socketio.on('doorCommand')
 def door_command_socketio(data):
     door_id = data.get('door_id')  
-    door_id = str(door_id)
+    door_id = int(door_id)
 
     if door_id in doors_status:
         door_lock = doors_status[door_id][0]
@@ -278,9 +316,9 @@ def door_command_socketio(data):
             return
 
         if door_status == 0:  # 닫힌 상태 -> 열기 명령
-            command = COMMANDS["open_door"](int(door_id))
+            command = COMMANDS["open_door"](door_id)
         else:                 # 열린 상태 -> 닫기 명령
-            command = COMMANDS["close_door"](int(door_id))
+            command = COMMANDS["close_door"](door_id)
 
         try:
             ser.write(bytearray(command))  
