@@ -1,0 +1,194 @@
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: linear-gradient(to bottom, #f2f2f7, #d1d1d6);
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+.container {
+  display: flex;
+  flex-direction: column; /* 세로 방향으로 정렬 */
+  align-items: center; /* 중앙 정렬 */
+  justify-content: center; /* 수직 중앙 정렬 */
+  height: 100vh; /* 화면 전체 높이를 사용 */
+}
+
+h1 {
+  margin-bottom: 20px;
+  color: #333;
+  font-weight: 600;
+}
+
+
+.car {
+  position: relative;
+  width: 350px;
+  height: 700px; /* 이미지 크기에 맞게 높이를 조정 */
+  background: url('../img/car.png') no-repeat center center; /* 배경 이미지 설정 */
+  background-size: cover; /* 이미지를 컨테이너에 맞게 조정 */
+  border-radius: 20px;
+  margin: 0 auto 20px;
+}
+
+/* 문 공통 스타일 */
+.door {
+  position: absolute; /* 자유 배치를 위해 absolute 설정 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 20px;
+  font-weight: bold;
+  color: #ffffff;
+  text-transform: uppercase;
+  width: 20px; /* 문 크기 */
+  height: 150px; /* 문 크기 */
+  /* background: #007aff; */
+  background: rgb(47, 48, 47);
+  border-radius: 10px;
+  transition: transform 0.5s ease, box-shadow 0.5s ease, background-color 0.3s ease;
+  box-shadow: inset 0 -3px 5px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+}
+
+
+.door.open {
+  transform: rotate(-70deg); /* 반시계 방향 기본 */
+  background: #4169E1; /* 열렸을 때 색상 */
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+/* 
+.front-left {
+  grid-column: 1;
+  grid-row: 1;
+  transform-origin: top left;
+  align-self: end;
+  justify-self: start;
+  background: url('front_left.png') no-repeat center center;
+} 
+*/
+
+
+/* 앞 왼쪽 문 */
+.front-left {
+  top: 250px; /* 원하는 위치로 이동 */
+  left: 70px;
+  transform-origin: top left;
+  background: url('../img/front_left.png') no-repeat center center;
+  background-size: cover;
+}
+
+/* 뒤 왼쪽 문 */
+.rear-left {
+  top: 400px; /* 원하는 위치로 이동 */
+  left: 70px;
+  transform-origin: top left;
+  background: url('../img/rear_left.png') no-repeat center center;
+  background-size: cover;
+}
+
+/* 앞 오른쪽 문 */
+.front-right {
+  top: 250px; /* 원하는 위치로 이동 */
+  right: 70px;
+  transform-origin: top right;
+  background: url('../img/front_right.png') no-repeat center center;
+  background-size: cover;
+}
+
+/* 뒤 오른쪽 문 */
+.rear-right {
+  top: 400px; /* 원하는 위치로 이동 */
+  right: 70px;
+  transform-origin: top right;
+  background: url('../img/rear_right.png') no-repeat center center;
+  background-size: cover;
+}
+
+.front-left.open, .rear-left.open{
+  transform: rotate(70deg); /* 왼쪽 문은 시계 방향으로 열림 */
+}
+
+.front-right.open, .rear-right.open {
+  transform: rotate(-70deg); /* 오른쪽 문은 반시계 방향으로 열림 */
+}
+
+/* 버튼 공통 스타일 */
+.control-button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  font-size: 16px;
+  font-weight: bold;
+  color: #fff;
+  background-color: linear-gradient(to bottom, #f2f2f7, #d1d1d6); 
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+/* 버튼 hover 효과 */
+.control-button:hover {
+  background-color: #e0e0e0;
+}
+
+.control-button:not(.active) {
+  background-color: linear-gradient(to bottom, #f2f2f7, #d1d1d6);
+}
+
+/* 버튼 컨테이너 */
+.top-controls {
+  display: flex;
+  justify-content: center;
+  gap: 30px; /* 버튼 간격 조정 */
+  margin-bottom: 10px; /* 차량과 버튼 사이의 간격 */
+}
+
+/* Lock 버튼 */
+.lock-button {
+  background: url('../img/lock.png') no-repeat center center;
+  background-size: contain;
+  background-blend-mode: multiply; /* 색상과 이미지가 조화롭게 섞임 */
+  background-color: linear-gradient(to bottom, #f2f2f7, #d1d1d6);
+  border: none;
+  width: 70px; /* 버튼 크기 */
+  height: 50px;
+  cursor: pointer;
+}
+
+/* Power 버튼 */
+.power-button {
+  background: url('../img/power.png') no-repeat center center;
+  background-size: contain;
+  background-blend-mode: multiply; /* 색상과 이미지가 조화롭게 섞임 */
+  background-color: linear-gradient(to bottom, #f2f2f7, #d1d1d6);
+  border: none;
+  width: 70px; /* 버튼 크기 */
+  height: 50px;
+  cursor: pointer;
+}
+
+/* Unlock 버튼 */
+.unlock-button {
+  background: url('../img/unlock.png') no-repeat center center;
+  background-size: contain;
+  background-blend-mode: multiply; /* 색상과 이미지가 조화롭게 섞임 */
+  background-color: linear-gradient(to bottom, #f2f2f7, #d1d1d6);
+  border: none;
+  width: 70px; /* 버튼 크기 */
+  height: 50px;
+  cursor: pointer;
+}
+
+.lock-button.active, .unlock-button.active {
+  background-color: gray; /* 진한 회색 */
+  color: white;
+}
+
+.power-button.active {
+  background-color: #ff3b30; /* 빨간색 */
+  color: white;
+}
