@@ -28,6 +28,8 @@ previous_settings = {}
 # car 
 power_status  = 0
 doors_status = {
+    "auto_door_open" : 0,
+    "auto_door_close" : 0,
     "lock_status": 0,  
     "door_status": {   
         1: 0, 
@@ -44,7 +46,7 @@ COMMANDS = {
     "power_off": [0xB0, 0xFF],        
 }
 
-# UART 포트 및 설정
+# UART setting
 ser = serial.Serial(
     port='/dev/ttyAMA3',      
     baudrate=115200,           
@@ -57,24 +59,24 @@ ser = serial.Serial(
 def door_sound(previous_lock_status, previous_open_status, door_lock_status, door_open_status):
 
     if previous_lock_status == 1 and previous_open_status == 0 and door_lock_status == 0 and door_open_status == 0:
-        # (1, 0) → (0, 0): 잠금 해제
+        # (1, 0) → (0, 0): unlock
         DFPlayTrack(1)
     elif previous_lock_status == 1 and previous_open_status == 0 and door_lock_status == 1 and door_open_status == 1:
-        # (1, 0) → (1, 1): 문 열림
+        # (1, 0) → (1, 1): open
         DFPlayTrack(3)
     elif previous_lock_status == 0 and previous_open_status == 0 and door_lock_status == 1 and door_open_status == 0:
-        # (0, 0) → (1, 0): 잠금
+        # (0, 0) → (1, 0): lock
         DFPlayTrack(1)
     elif previous_lock_status == 1 and previous_open_status == 1 and door_lock_status == 1 and door_open_status == 0:
-        # (1, 1) → (1, 0): 문 닫힘
+        # (1, 1) → (1, 0): close
         DFPlayTrack(4)
     elif previous_lock_status == 0 and previous_open_status == 0 and door_lock_status == 1 and door_open_status == 1:
-        # (0, 0) → (1, 1): 잠금 후 열림
+        # (0, 0) → (1, 1): lock -> open
         DFPlayTrack(1)
         time.sleep(1)
         DFPlayTrack(3)
     elif previous_lock_status == 1 and previous_open_status == 1 and door_lock_status == 0 and door_open_status == 0:
-        # (1, 1) → (0, 0): 닫힘 후 잠금 해제
+        # (1, 1) → (0, 0): close -> lock
         DFPlayTrack(4)
         time.sleep(1)
         DFPlayTrack(1)
@@ -170,13 +172,13 @@ def handle_vehicle_control(chunk): # 0xB0
 
 def parse_protocol_message(message):
     if len(message) % 2 != 0:
-        raise ValueError("입력 메시지의 길이는 짝수여야 합니다.")
+        raise ValueError("len(message) % 2 != 0 ")
     try:
-        # 2글자씩 잘라서 16진수로 변환
+        # parse hex
         chunk = [int(message[i:i+2], 16) for i in range(0, len(message), 2)]
         return chunk
     except ValueError as e:
-        raise ValueError(f"메시지 변환 중 오류 발생: {e}")
+        raise ValueError(f"pare error : {e}")
     
 #######################################################################
 # backup
@@ -199,6 +201,10 @@ def request_setting():
                         latest_settings.update(response_settings)   
                         print("setting change, emit\nlatest_settings:", json.dumps(latest_settings, indent=4))
                         execute_fan(latest_settings["optimalTemperature"]) # fan
+                        
+                        # autoDoor 
+                        doors_status["auto_door_open"] = latest_settings["autoDoorOpen"]
+                        doors_status["auto_door_close"] = latest_settings["autoDoorClose"]
                         
                         socketio.emit('updateSettings', latest_settings)
                         
@@ -270,12 +276,12 @@ def test_uart_receive():
                 first_byte = chunk[0]
                 high_4bit = (first_byte >> 4) & 0x0F
 
-                if high_4bit == 0xA:        # 디지털키
+                if high_4bit == 0xA:          # digitalkey
                     print("0xA")
                     # handle_digital_key(chunk)
-                elif high_4bit == 0x2:      # 차문 상태 정보
+                elif high_4bit == 0x2:        # door
                     handle_door_status(chunk)
-                elif high_4bit == 0xB:      # 차량 제어
+                elif high_4bit == 0xB:        # power 
                     handle_vehicle_control(chunk)
                 else:
                     raise ValueError(f"Unknown high_4bit value: 0x{high_4bit:X} in chunk: ")
@@ -303,11 +309,11 @@ def test_uart_receive():
 #                     first_byte = chunk[0]
 #                     high_4bit = (first_byte >> 4) & 0x0F
 
-#                     if high_4bit == 0xA:        # 디지털키
+#                     if high_4bit == 0xA:          # digitalkey
 #                         handle_digital_key(chunk)
-#                     elif high_4bit == 0x2:      # 차문 상태 정보
+#                     elif high_4bit == 0x2:        # door
 #                         handle_door_status(chunk)
-#                     elif high_4bit == 0xB:      # 차량 제어
+#                     elif high_4bit == 0xB:        # power
 #                         handle_vehicle_control(chunk)
 #                     else:
 #                         raise ValueError(f"Unknown high_4bit value: 0x{high_4bit:X} in chunk: {hex_data}")
@@ -375,45 +381,68 @@ def unlock_command_rest():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# {192.168.137.82}:5000/open_door
-@app.route('/open_door', methods=['POST'])
-def open_door_rest():
-    
-    print("restapi - open door")
-    
-    if doors_status["lock_status"] == 0:
-        print("doors lock")
-        return
-    
+## auto_door_open
+def remote_door_open(auto_door_open, lock_status):
+    print(f"auto_door_open:{auto_door_open}, lock_status:{lock_status}")
     try:
-
-        command = COMMANDS["open_door"](1)
-        ser.write(bytearray(command))  
-        print(f"Sent command via UART: {bytearray(command)}")
+        if auto_door_open == 0:
+            if lock_status == 0:
+                return jsonify({"status": "error", "message": "Door is locked. Cannot open."}), 400
+        else:
+            if lock_status == 0: 
+                unlock_command = COMMANDS["unlock"]
+                ser.write(bytearray(unlock_command))
+                print(f"Sent command via UART: {bytearray(unlock_command)}")
         
-        return jsonify({"status": "success", "message": "Door open Command"}), 200
+        open_command = COMMANDS["open_door"](1)
+        ser.write(bytearray(open_command))  
+        print(f"Sent command via UART: {bytearray(open_command)}")
+        
+        return jsonify({"status": "success", "message": "Door open Command"}), 200    
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+## auto_door_close
+def remote_door_close(auto_door_close, door1_status):
+    print(f"auto_door_open:{auto_door_close}, door1_status:{door1_status}")
+    try:
+        if auto_door_close == 0:
+            if door1_status == 0:
+                return jsonify({"status": "error", "message": "Door is closed."}), 400
+            else:
+                close_command = COMMANDS["close_door"](1)
+                ser.write(bytearray(close_command))
+                print(f"Sent command via UART: {bytearray(close_command)}")
+        else:
+            if door1_status == 1:
+                close_command = COMMANDS["close_door"](1)
+                ser.write(bytearray(close_command))  
+                print(f"Sent command via UART: {bytearray(close_command)}")
+                
+            lock_command = COMMANDS["lock"]
+            ser.write(bytearray(lock_command))
+            print(f"Sent command via UART: {bytearray(lock_command)}")
+                
+        
+        return jsonify({"status": "success", "message": "Door close Command"}), 200    
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
+# {192.168.137.82}:5000/open_door
+@app.route('/open_door', methods=['POST'])
+def open_door_rest():    
+    return remote_door_open(
+        doors_status["auto_door_open"],
+        doors_status["lock_status"]
+    )
 
 # {192.168.137.82}:5000/close_door
 @app.route('/close_door', methods=['POST'])
 def close_door_rest():
-    
-    print("restapi - close door ")
-    
-    if(doors_status["door_status"][1] == 0):
-        print("alreay close")
-        return
-    
-    try:
-        command = COMMANDS["close_door"](1)
-        
-        ser.write(bytearray(command))  
-        print(f"Sent command via UART: {bytearray(command)}")
-        
-        return jsonify({"status": "success", "message": "Door close Command"}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    return remote_door_close(
+        doors_status["auto_door_close"],
+        doors_status["door_status"][1]
+    )
     
 # Command
 @socketio.on('doorCommand')
@@ -484,7 +513,7 @@ def unlock_command_socketio(data=None):
 
 @socketio.on('powerCommand')
 def power_command_socketio():
-    global power_status  # 전역 변수 선언
+    global power_status  
 
     if power_status == 0: 
         command = COMMANDS["power_on"]

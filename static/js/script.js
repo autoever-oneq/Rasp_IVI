@@ -72,7 +72,7 @@ socket.on('initialize', function (data) {
   if (data.seatTemperature !== undefined) {
     document.getElementById('seatTemperature').textContent = `${data.seatTemperature}°C`;
   }
-  
+
   if (data.seatPosition !== undefined) {
     document.getElementById('seatPosition').textContent = `${data.seatPosition}`;
   }
@@ -119,8 +119,8 @@ socket.on("handleDoorStatus", function (data) {
 // 설정값의 MIN 및 MAX 정의
 const limits = {
   optimalTemperature: { min: 16, max: 30 },
-  seatAngle: { min: 0, max: 180 },
-  seatTemperature: { min: 20, max: 40 },
+  seatAngle: { min: 60, max: 120 },
+  seatTemperature: { min: 15, max: 40 },
   seatPosition: { min: 0, max: 100 }
 };
 
