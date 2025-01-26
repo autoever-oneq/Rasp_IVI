@@ -34,7 +34,7 @@ socket.on('initialize', function (data) {
     powerButton.classList.add('active');
   }
 
-  // lock 상태 
+  // lock 
   if (lockStatus == 0) {
     lockButton.classList.add('active');
     unlockButton.classList.remove('active');
@@ -62,7 +62,7 @@ socket.on('initialize', function (data) {
   }
 });
 
-// 문 상태 변경 수신
+// update door status
 socket.on("handleDoorStatus", function (data) {
   console.log("Door status update:", data);
 
@@ -99,8 +99,54 @@ socket.on("handleDoorStatus", function (data) {
   
 });
 
+socket.on('updateSettings', function (data) {
+  console.log("Received settings from server:", data);
 
-// 파워 상태
+  // 값을 슬라이더 범위 내로 제한하는 함수
+  function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+  }
+
+  // 데이터를 트랙바와 화면에 반영
+  if (data.optimalTemperature !== undefined) {
+      const min = parseInt(document.getElementById('optimalTemperatureSlider').min);
+      const max = parseInt(document.getElementById('optimalTemperatureSlider').max);
+      const value = clamp(data.optimalTemperature, min, max);
+
+      document.getElementById('optimalTemperatureSlider').value = value;
+      document.getElementById('optimalTemperature').textContent = `${value}°C`;
+  }
+
+  if (data.seatAngle !== undefined) {
+      const min = parseInt(document.getElementById('seatAngleSlider').min);
+      const max = parseInt(document.getElementById('seatAngleSlider').max);
+      const value = clamp(data.seatAngle, min, max);
+
+      document.getElementById('seatAngleSlider').value = value;
+      document.getElementById('seatAngle').textContent = `${value}°`;
+  }
+
+  if (data.seatTemperature !== undefined) {
+      const min = parseFloat(document.getElementById('seatTemperatureSlider').min);
+      const max = parseFloat(document.getElementById('seatTemperatureSlider').max);
+      const value = clamp(data.seatTemperature, min, max);
+
+      document.getElementById('seatTemperatureSlider').value = value;
+      document.getElementById('seatTemperature').textContent = `${value}°C`;
+  }
+
+  if (data.seatPosition !== undefined) {
+      const min = parseInt(document.getElementById('seatPositionSlider').min);
+      const max = parseInt(document.getElementById('seatPositionSlider').max);
+      const value = clamp(data.seatPosition, min, max);
+
+      document.getElementById('seatPositionSlider').value = value;
+      document.getElementById('seatPosition').textContent = value;
+  }
+});
+
+
+// power
 socket.on('powerStatusUpdate', function (data) {
   console.log('Power status updated:', data);
 
@@ -117,6 +163,10 @@ socket.on('powerStatusUpdate', function (data) {
 function getDoorIdFromElement(elementId) {
   return elementId.split('-')[1];
 }
+
+socket.on('updateSettings', function (data) {
+  console.log(data)
+});
 
 // door click
 document.querySelectorAll('.door').forEach(door => {

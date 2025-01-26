@@ -5,19 +5,23 @@ from threading import Lock
 import time
 import traceback
 from raspmp3 import DFInit, DFPlayTrack
+import requests
 
 app = Flask(__name__)
 
 # sockIO
 socketio = SocketIO(app, cors_allowed_origins='*')
-thread = None
-thread_lock = Lock()
 
+thread_lock = Lock()
+thread = None
+thread_request = None
+
+DIGITAL_KEY_UUID ="ABCDEF00"
 power_status  = 1
 doors_status = {
-    "lock_status": 1,  # 0: 전체 잠금, 1: 전체 잠금 해제
-    "door_status": {   # 각 문 상태
-        1: 1,  # 0: 닫힘, 1: 열림
+    "lock_status": 1,  
+    "door_status": {   
+        1: 1, 
         2: 0
     }
 }
@@ -166,7 +170,29 @@ def parse_protocol_message(message):
     except ValueError as e:
         raise ValueError(f"메시지 변환 중 오류 발생: {e}")
     
-# TEST
+#######################################################################
+# backup
+APP_SERVER_BASE_URL = "http://192.168.0.90:3000"
+APP_SERVER_UUID = "ABCDEF00"
+def request_setting():
+    while True:
+        try:
+
+            url = f"{APP_SERVER_BASE_URL}/setting/{APP_SERVER_UUID}"
+            response = requests.get(url)
+        
+            if response.status_code == 200:
+                settings = response.json()
+                socketio.emit('updateSettings', settings)
+
+            else:
+                print(f"Failed to fetch settings from app-server: {response.status_code}")
+
+        except Exception as e:
+            print(f"Error occurred in request_setting: {e}")
+            
+        time.sleep(5)
+        
 def test_uart_receive():
     while True:
         try:
@@ -233,6 +259,7 @@ def test_uart_receive():
 #             print(f"An unexpected error occurred: {e}")
 #             print(traceback.format_exc())
 
+########################################################################
 # {192.168.137.82}:5000/power_off
 @app.route('/power_off', methods=['POST'])
 def power_off_command_rest():
@@ -325,6 +352,19 @@ def close_door_rest():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# return 용
+@app.route('/settings', methods=['POST'])
+def setting_data():
+    if request.is_json:
+        received_data = request.get_json()
+        if DIGITAL_KEY_UUID == received_data["uuid"]:
+            print("receive_data :",received_data)
+            return jsonify({"status": "success", "data": received_data}), 200
+        else:
+            return jsonify({"status": "error", "message": "Invalid JSON"}), 400
+    else:
+        return jsonify({"status": "error", "message": "Invalid JSON"}), 400
+    
 # Command
 @socketio.on('doorCommand')
 def door_command_socketio(data):
@@ -413,10 +453,13 @@ def power_command_socketio():
 @socketio.on('connect')
 def connect():
     print('Client connected')
-    global thread
+    global thread, thread_request 
     with thread_lock:
         if thread is None:
             thread = socketio.start_background_task(test_uart_receive)
+            
+        if thread_request is None :
+            thread_request = socketio.start_background_task(request_setting)
 
     DFInit()
 
