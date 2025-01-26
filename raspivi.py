@@ -6,6 +6,7 @@ import time
 import traceback
 from raspmp3 import DFInit, DFPlayTrack
 import requests
+from raspfan import update_relay_active, execute_fan
 
 app = Flask(__name__)
 
@@ -17,11 +18,11 @@ thread = None
 thread_request = None
 
 DIGITAL_KEY_UUID ="ABCDEF00"
-power_status  = 1
+power_status  = 0
 doors_status = {
-    "lock_status": 1,  
+    "lock_status": 0,  
     "door_status": {   
-        1: 1, 
+        1: 0, 
         2: 0
     }
 }
@@ -172,7 +173,7 @@ def parse_protocol_message(message):
     
 #######################################################################
 # backup
-APP_SERVER_BASE_URL = "http://192.168.0.90:3000"
+APP_SERVER_BASE_URL = "http://172.30.1.50:3000"
 APP_SERVER_UUID = "ABCDEF00"
 def request_setting():
     while True:
@@ -183,6 +184,9 @@ def request_setting():
         
             if response.status_code == 200:
                 settings = response.json()
+
+                execute_fan(settings["optimalTemperature"]) # fan
+                
                 socketio.emit('updateSettings', settings)
 
             else:
@@ -193,61 +197,29 @@ def request_setting():
             
         time.sleep(5)
         
-def test_uart_receive():
-    while True:
-        try:
-            test_message = input("메시지를 입력하세요 (16진수 형식, 예: 200111): ").strip()
-            if not test_message:
-                continue
-
-            # TEST
-            chunk = parse_protocol_message(test_message)
-
-            if chunk:
-                first_byte = chunk[0]
-                high_4bit = (first_byte >> 4) & 0x0F
-
-                if high_4bit == 0xA:        # 디지털키
-                    print("0xA")
-                    # handle_digital_key(chunk)
-                elif high_4bit == 0x2:      # 차문 상태 정보
-                    handle_door_status(chunk)
-                elif high_4bit == 0xB:      # 차량 제어
-                    handle_vehicle_control(chunk)
-                else:
-                    raise ValueError(f"Unknown high_4bit value: 0x{high_4bit:X} in chunk: {hex_data}")
-
-        except serial.SerialException as e:
-            print(f"SerialException occurred: {e}")
-            print(traceback.format_exc())
-        except ValueError as e:
-            print(f"ValueError occurred: {e}")
-            print(traceback.format_exc())
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-            print(traceback.format_exc())
-            
-# def uart_receive():
+# def test_uart_receive():
 #     while True:
 #         try:
-#             if ser.in_waiting > 0:
-#                 chunk = ser.read(ser.in_waiting)
-            
-#                 hex_data = [f"0x{byte:02X}" for byte in chunk]
-#                 print(f"[수신] {hex_data}")
+#             test_message = input("메시지를 입력하세요 (16진수 형식, 예: 200111): ").strip()
+#             if not test_message:
+#                 continue
 
-#                 if chunk:
-#                     first_byte = chunk[0]
-#                     high_4bit = (first_byte >> 4) & 0x0F
+#             # TEST
+#             chunk = parse_protocol_message(test_message)
 
-#                     if high_4bit == 0xA:        # 디지털키
-#                         handle_digital_key(chunk)
-#                     elif high_4bit == 0x2:      # 차문 상태 정보
-#                         handle_door_status(chunk)
-#                     elif high_4bit == 0xB:      # 차량 제어
-#                         handle_vehicle_control(chunk)
-#                     else:
-#                         raise ValueError(f"Unknown high_4bit value: 0x{high_4bit:X} in chunk: {hex_data}")
+#             if chunk:
+#                 first_byte = chunk[0]
+#                 high_4bit = (first_byte >> 4) & 0x0F
+
+#                 if high_4bit == 0xA:        # 디지털키
+#                     print("0xA")
+#                     # handle_digital_key(chunk)
+#                 elif high_4bit == 0x2:      # 차문 상태 정보
+#                     handle_door_status(chunk)
+#                 elif high_4bit == 0xB:      # 차량 제어
+#                     handle_vehicle_control(chunk)
+#                 else:
+#                     raise ValueError(f"Unknown high_4bit value: 0x{high_4bit:X} in chunk: {hex_data}")
 
 #         except serial.SerialException as e:
 #             print(f"SerialException occurred: {e}")
@@ -258,6 +230,38 @@ def test_uart_receive():
 #         except Exception as e:
 #             print(f"An unexpected error occurred: {e}")
 #             print(traceback.format_exc())
+            
+def uart_receive():
+    while True:
+        try:
+            if ser.in_waiting > 0:
+                chunk = ser.read(ser.in_waiting)
+            
+                hex_data = [f"0x{byte:02X}" for byte in chunk]
+                print(f"[수신] {hex_data}")
+
+                if chunk:
+                    first_byte = chunk[0]
+                    high_4bit = (first_byte >> 4) & 0x0F
+
+                    if high_4bit == 0xA:        # 디지털키
+                        handle_digital_key(chunk)
+                    elif high_4bit == 0x2:      # 차문 상태 정보
+                        handle_door_status(chunk)
+                    elif high_4bit == 0xB:      # 차량 제어
+                        handle_vehicle_control(chunk)
+                    else:
+                        raise ValueError(f"Unknown high_4bit value: 0x{high_4bit:X} in chunk: {hex_data}")
+
+        except serial.SerialException as e:
+            print(f"SerialException occurred: {e}")
+            print(traceback.format_exc())
+        except ValueError as e:
+            print(f"ValueError occurred: {e}")
+            print(traceback.format_exc())
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            print(traceback.format_exc())
 
 ########################################################################
 # {192.168.137.82}:5000/power_off
@@ -456,7 +460,7 @@ def connect():
     global thread, thread_request 
     with thread_lock:
         if thread is None:
-            thread = socketio.start_background_task(test_uart_receive)
+            thread = socketio.start_background_task(uart_receive)
             
         if thread_request is None :
             thread_request = socketio.start_background_task(request_setting)
