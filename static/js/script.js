@@ -74,7 +74,7 @@ socket.on('initialize', function (data) {
   }
 
   if (data.seatPosition !== undefined) {
-    document.getElementById('seatPosition').textContent = `${data.seatPosition}`;
+    document.getElementById('seatPosition').textContent = `${data.seatPosition}%`;
   }
 
 });
@@ -158,7 +158,7 @@ socket.on('updateSettings', function (data) {
       limits.seatPosition.max,
       Math.max(limits.seatPosition.min, data.seatPosition)
     );
-    document.getElementById('seatPosition').textContent = `${value}`;
+    document.getElementById('seatPosition').textContent = `${value}%`;
   }
 });
 
@@ -170,7 +170,15 @@ function changeValue(key, delta) {
 
   // 값 업데이트 (범위 내로 제한)
   const newValue = Math.min(max, Math.max(min, currentValue + delta));
-  display.textContent = key === 'seatAngle' ? `${newValue}°` : `${newValue}°C`;
+  if (key === 'seatAngle' ) {
+    display.textContent = `${newValue}°`;
+  } 
+  else if (key === 'seatPosition'){
+    display.textContent = `${newValue}%`;
+  }
+  else {
+    display.textContent = `${newValue}°C`;
+  }
 
   // 서버로 변경된 값 전송
   socket.emit('changeSetting', { [key]: newValue });

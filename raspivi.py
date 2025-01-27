@@ -22,8 +22,14 @@ settings_lock = Lock()
 
 # digital_key
 DIGITAL_KEY_UUID ="ABCDEF00"
-latest_settings ={}
-previous_settings = {}
+latest_settings ={
+    "autoDoorClose": False,
+    "autoDoorOpen": False,
+    "optimalTemperature": 0,
+    "seatAngle": 0,
+    "seatPosition": 0,
+    "seatTemperature": 0,
+    "uuid": "ABCDEF00"}
 
 # car 
 power_status  = 0
@@ -164,8 +170,9 @@ def handle_vehicle_control(chunk): # 0xB0
 
     power_status = power_command
     if power_status == 0: # power off
-        print("off signal")
+        print("power off")
     else :                # power on
+        print("power on")
         DFPlayTrack(2)
 
     socketio.emit('powerStatusUpdate', {'status': power_status})
@@ -182,7 +189,7 @@ def parse_protocol_message(message):
     
 #######################################################################
 # backup
-APP_SERVER_BASE_URL = "http://192.168.0.90:3000"
+APP_SERVER_BASE_URL = "http://192.168.202.2:3000"
 APP_SERVER_UUID = "ABCDEF00"
 
 def request_setting():
@@ -199,7 +206,7 @@ def request_setting():
                     if latest_settings != response_settings:
                         
                         latest_settings.update(response_settings)   
-                        print("setting change, emit\nlatest_settings:", json.dumps(latest_settings, indent=4))
+                        print("\nsetting change, emit\nlatest_settings:", json.dumps(latest_settings, indent=4))
                         execute_fan(latest_settings["optimalTemperature"]) # fan
                         
                         # autoDoor 
@@ -207,8 +214,7 @@ def request_setting():
                         doors_status["auto_door_close"] = latest_settings["autoDoorClose"]
                         
                         socketio.emit('updateSettings', latest_settings)
-                        
-                        previous_settings.update()
+                    
                     else:
                         print("Settings did not change, no emit.")
 
@@ -236,7 +242,8 @@ def change_setting(data):
         url = f"{APP_SERVER_BASE_URL}/setting/{APP_SERVER_UUID}"
         
         try:
-            response = requests.post(url, json=latest_settings, headers={"Content-Type": "application/json"})
+            
+            response = requests.patch(url, json=latest_settings, headers={"Content-Type": "application/json"})
             
             if response.status_code == 200:
                 print("Successfully sent settings to APP_SERVER:", response.json())
@@ -349,6 +356,20 @@ def power_off_command_rest():
 def power_on_command_rest():
     
     print("rest - power_on")
+    
+    try:
+        command = COMMANDS["power_on"]
+        ser.write(bytearray(command))
+        
+        print(f"Sent command via UART: {bytearray(command)}")
+        return jsonify({"status": "success", "message": "Door Lock Command"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
+@app.route('/power_on_nfc', methods=['POST'])
+def power_on_nfc_rest():
+    
+    print("rest - power_on_nfc")
     
     try:
         command = COMMANDS["power_on"]
