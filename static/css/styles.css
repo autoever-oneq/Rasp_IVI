@@ -40,38 +40,74 @@ h2 {
 }
 
 .info-container {
-  background: white;
-  padding: 20px;
-  border-radius: 10px;
-  width: 300px;
-  text-align: left; /* 글자를 왼쪽 정렬 */
+  text-align: center;
+  margin: 20px auto;
+}
+
+h2 {
+  font-size: 28px; /* 제목 크기 증가 */
+  margin-bottom: 20px;
+}
+
+.info-container {
+  text-align: left;
+  margin: 20px 0;
+  margin-left: -50px; /* 왼쪽으로 이동 */
+}
+
+.info-container {
+  text-align: left;
+  margin-left: -70px; /* 왼쪽으로 더 이동 */
+}
+
+h2 {
+  font-size: 30px; /* 제목 크기 줄임 */
+  font-weight: bold;
+  margin-bottom: 15px; /* 제목과 내용 간 간격 줄임 */
+  color: #333;
+  text-align: center;
 }
 
 .info-item {
   display: flex;
   align-items: center;
-  justify-content: center; /* 수평 방향 중앙 정렬 */
-  margin-bottom: 15px;
-  width: 100%; /* 각 info-item이 컨테이너에 맞게 확장 */
+  margin-bottom: 15px; /* 항목 간 간격 줄임 */
+  font-size: 20px; /* 항목 기본 텍스트 크기 줄임 */
 }
 
 .info-item label {
-  width: 120px;       /* 고정 너비 */
-  margin-right: 10px;
-  font-size: 14px;    /* 글자 크기 */
-  text-align: right;  /* 텍스트 오른쪽 정렬 */
+  width: 200px; /* 라벨 너비 */
+  text-align: left; /* 라벨 왼쪽 정렬 */
+  font-size: 18px; /* 라벨 글자 크기 줄임 */
+  font-weight: bold; /* 강조 */
+  white-space: nowrap; /* 텍스트 줄바꿈 방지 */
 }
 
-.info-item input[type="range"] {
-  width: 150px;       /* 슬라이더 길이 */
-  margin: 0 10px;     /* 좌우 여백 */
+.info-item button {
+  width: 45px; /* 버튼 너비 줄임 */
+  height: 45px; /* 버튼 높이 줄임 */
+  font-size: 20px; /* 버튼 글자 크기 줄임 */
+  font-weight: bold;
+  background-color: #007aff;
+  color: white;
+  border: none;
+  border-radius: 8px; /* 버튼 둥근 모서리 */
+  cursor: pointer;
+  margin: 0 6px; /* 버튼 간격 */
+}
+
+.info-item button:hover {
+  background-color: #0056b3; /* 호버 시 색상 */
 }
 
 .info-item span {
-  width: 50px;        /* 고정 너비 */
-  text-align: left;   /* 텍스트 왼쪽 정렬 */
-  font-size: 14px;    /* 글자 크기 */
+  width: 70px; /* 숫자 영역 너비 */
+  text-align: center;
+  font-size: 20px; /* 숫자 글자 크기 줄임 */
+  font-weight: normal;
+  color: #444;
 }
+
 
 h1 {
   margin-bottom: 20px;

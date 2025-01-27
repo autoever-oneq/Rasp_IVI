@@ -60,6 +60,23 @@ socket.on('initialize', function (data) {
       }
     }
   }
+
+  if (data.optimalTemperature !== undefined) {
+    document.getElementById('optimalTemperature').textContent = `${data.optimalTemperature}°C`;
+  }
+
+  if (data.seatAngle !== undefined) {
+    document.getElementById('seatAngle').textContent = `${data.seatAngle}°`;
+  }
+
+  if (data.seatTemperature !== undefined) {
+    document.getElementById('seatTemperature').textContent = `${data.seatTemperature}°C`;
+  }
+
+  if (data.seatPosition !== undefined) {
+    document.getElementById('seatPosition').textContent = `${data.seatPosition}%`;
+  }
+
 });
 
 // update door status
@@ -99,51 +116,73 @@ socket.on("handleDoorStatus", function (data) {
   
 });
 
+// 설정값의 MIN 및 MAX 정의
+const limits = {
+  optimalTemperature: { min: 16, max: 30 },
+  seatAngle: { min: 60, max: 120 },
+  seatTemperature: { min: 15, max: 40 },
+  seatPosition: { min: 0, max: 100 }
+};
+
+// 서버에서 설정값을 수신
 socket.on('updateSettings', function (data) {
   console.log("Received settings from server:", data);
 
-  // 값을 슬라이더 범위 내로 제한하는 함수
-  function clamp(value, min, max) {
-      return Math.max(min, Math.min(max, value));
-  }
-
-  // 데이터를 트랙바와 화면에 반영
+  // 슬라이더 값 및 화면 업데이트
   if (data.optimalTemperature !== undefined) {
-      const min = parseInt(document.getElementById('optimalTemperatureSlider').min);
-      const max = parseInt(document.getElementById('optimalTemperatureSlider').max);
-      const value = clamp(data.optimalTemperature, min, max);
-
-      document.getElementById('optimalTemperatureSlider').value = value;
-      document.getElementById('optimalTemperature').textContent = `${value}°C`;
+    const value = Math.min(
+      limits.optimalTemperature.max,
+      Math.max(limits.optimalTemperature.min, data.optimalTemperature)
+    );
+    document.getElementById('optimalTemperature').textContent = `${value}°C`;
   }
 
   if (data.seatAngle !== undefined) {
-      const min = parseInt(document.getElementById('seatAngleSlider').min);
-      const max = parseInt(document.getElementById('seatAngleSlider').max);
-      const value = clamp(data.seatAngle, min, max);
-
-      document.getElementById('seatAngleSlider').value = value;
-      document.getElementById('seatAngle').textContent = `${value}°`;
+    const value = Math.min(
+      limits.seatAngle.max,
+      Math.max(limits.seatAngle.min, data.seatAngle)
+    );
+    document.getElementById('seatAngle').textContent = `${value}°`;
   }
 
   if (data.seatTemperature !== undefined) {
-      const min = parseFloat(document.getElementById('seatTemperatureSlider').min);
-      const max = parseFloat(document.getElementById('seatTemperatureSlider').max);
-      const value = clamp(data.seatTemperature, min, max);
-
-      document.getElementById('seatTemperatureSlider').value = value;
-      document.getElementById('seatTemperature').textContent = `${value}°C`;
+    const value = Math.min(
+      limits.seatTemperature.max,
+      Math.max(limits.seatTemperature.min, data.seatTemperature)
+    );
+    document.getElementById('seatTemperature').textContent = `${value}°C`;
   }
 
   if (data.seatPosition !== undefined) {
-      const min = parseInt(document.getElementById('seatPositionSlider').min);
-      const max = parseInt(document.getElementById('seatPositionSlider').max);
-      const value = clamp(data.seatPosition, min, max);
-
-      document.getElementById('seatPositionSlider').value = value;
-      document.getElementById('seatPosition').textContent = value;
+    const value = Math.min(
+      limits.seatPosition.max,
+      Math.max(limits.seatPosition.min, data.seatPosition)
+    );
+    document.getElementById('seatPosition').textContent = `${value}%`;
   }
 });
+
+// 버튼 클릭 시 값 변경
+function changeValue(key, delta) {
+  const display = document.getElementById(key);
+  const currentValue = parseFloat(display.textContent);
+  const { min, max } = limits[key];
+
+  // 값 업데이트 (범위 내로 제한)
+  const newValue = Math.min(max, Math.max(min, currentValue + delta));
+  if (key === 'seatAngle' ) {
+    display.textContent = `${newValue}°`;
+  } 
+  else if (key === 'seatPosition'){
+    display.textContent = `${newValue}%`;
+  }
+  else {
+    display.textContent = `${newValue}°C`;
+  }
+
+  // 서버로 변경된 값 전송
+  socket.emit('changeSetting', { [key]: newValue });
+}
 
 
 // power

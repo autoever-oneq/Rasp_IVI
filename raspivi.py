@@ -7,19 +7,35 @@ import traceback
 from raspmp3 import DFInit, DFPlayTrack
 import requests
 from raspfan import update_relay_active, execute_fan
+import json
 
 app = Flask(__name__)
 
 # sockIO
 socketio = SocketIO(app, cors_allowed_origins='*')
 
-thread_lock = Lock()
-thread = None
+# lock
+thread_uart = None
 thread_request = None
+background_lock = Lock()
+settings_lock = Lock()
 
+# digital_key
 DIGITAL_KEY_UUID ="ABCDEF00"
+latest_settings ={
+    "autoDoorClose": False,
+    "autoDoorOpen": False,
+    "optimalTemperature": 0,
+    "seatAngle": 0,
+    "seatPosition": 0,
+    "seatTemperature": 0,
+    "uuid": "ABCDEF00"}
+
+# car 
 power_status  = 0
 doors_status = {
+    "auto_door_open" : 0,
+    "auto_door_close" : 0,
     "lock_status": 0,  
     "door_status": {   
         1: 0, 
@@ -36,7 +52,7 @@ COMMANDS = {
     "power_off": [0xB0, 0xFF],        
 }
 
-# UART 포트 및 설정
+# UART setting
 ser = serial.Serial(
     port='/dev/ttyAMA3',      
     baudrate=115200,           
@@ -46,30 +62,30 @@ ser = serial.Serial(
     timeout=1
 )
 
-# def door_sound(previous_lock_status, previous_open_status, door_lock_status, door_open_status):
+def door_sound(previous_lock_status, previous_open_status, door_lock_status, door_open_status):
 
-#     if previous_lock_status == 1 and previous_open_status == 0 and door_lock_status == 0 and door_open_status == 0:
-#         # (1, 0) → (0, 0): 잠금 해제
-#         DFPlayTrack(1)
-#     elif previous_lock_status == 1 and previous_open_status == 0 and door_lock_status == 1 and door_open_status == 1:
-#         # (1, 0) → (1, 1): 문 열림
-#         DFPlayTrack(3)
-#     elif previous_lock_status == 0 and previous_open_status == 0 and door_lock_status == 1 and door_open_status == 0:
-#         # (0, 0) → (1, 0): 잠금
-#         DFPlayTrack(1)
-#     elif previous_lock_status == 1 and previous_open_status == 1 and door_lock_status == 1 and door_open_status == 0:
-#         # (1, 1) → (1, 0): 문 닫힘
-#         DFPlayTrack(4)
-#     elif previous_lock_status == 0 and previous_open_status == 0 and door_lock_status == 1 and door_open_status == 1:
-#         # (0, 0) → (1, 1): 잠금 후 열림
-#         DFPlayTrack(1)
-#         time.sleep(1)
-#         DFPlayTrack(3)
-#     elif previous_lock_status == 1 and previous_open_status == 1 and door_lock_status == 0 and door_open_status == 0:
-#         # (1, 1) → (0, 0): 닫힘 후 잠금 해제
-#         DFPlayTrack(4)
-#         time.sleep(1)
-#         DFPlayTrack(1)
+    if previous_lock_status == 1 and previous_open_status == 0 and door_lock_status == 0 and door_open_status == 0:
+        # (1, 0) → (0, 0): unlock
+        DFPlayTrack(1)
+    elif previous_lock_status == 1 and previous_open_status == 0 and door_lock_status == 1 and door_open_status == 1:
+        # (1, 0) → (1, 1): open
+        DFPlayTrack(3)
+    elif previous_lock_status == 0 and previous_open_status == 0 and door_lock_status == 1 and door_open_status == 0:
+        # (0, 0) → (1, 0): lock
+        DFPlayTrack(1)
+    elif previous_lock_status == 1 and previous_open_status == 1 and door_lock_status == 1 and door_open_status == 0:
+        # (1, 1) → (1, 0): close
+        DFPlayTrack(4)
+    elif previous_lock_status == 0 and previous_open_status == 0 and door_lock_status == 1 and door_open_status == 1:
+        # (0, 0) → (1, 1): lock -> open
+        DFPlayTrack(1)
+        time.sleep(1)
+        DFPlayTrack(3)
+    elif previous_lock_status == 1 and previous_open_status == 1 and door_lock_status == 0 and door_open_status == 0:
+        # (1, 1) → (0, 0): close -> lock
+        DFPlayTrack(4)
+        time.sleep(1)
+        DFPlayTrack(1)
 
 def handle_door_status(chunk):
     #  0x20, 0x00, 0x01
@@ -117,8 +133,7 @@ def handle_door_status(chunk):
         doors_status["lock_status"] = door_lock_status
         doors_status["door_status"][door_id] = door_open_status
 
-        #door_sound(previous_lock_status, previous_open_status, door_lock_status, door_open_status)
-        
+        door_sound(previous_lock_status, previous_open_status, door_lock_status, door_open_status)
         
         print(f"[Door ID: {door_id} - {previous_lock_status, previous_open_status}] >> [{doors_status['lock_status']}, {doors_status['door_status'][door_id]}]")
         print(f"Lock Status: {doors_status['lock_status']}, Door Status: {doors_status['door_status']}")
@@ -155,39 +170,53 @@ def handle_vehicle_control(chunk): # 0xB0
 
     power_status = power_command
     if power_status == 0: # power off
-        print("off signal")
+        print("power off")
     else :                # power on
+        print("power on")
         DFPlayTrack(2)
 
     socketio.emit('powerStatusUpdate', {'status': power_status})
 
 def parse_protocol_message(message):
     if len(message) % 2 != 0:
-        raise ValueError("입력 메시지의 길이는 짝수여야 합니다.")
+        raise ValueError("len(message) % 2 != 0 ")
     try:
-        # 2글자씩 잘라서 16진수로 변환
+        # parse hex
         chunk = [int(message[i:i+2], 16) for i in range(0, len(message), 2)]
         return chunk
     except ValueError as e:
-        raise ValueError(f"메시지 변환 중 오류 발생: {e}")
+        raise ValueError(f"pare error : {e}")
     
 #######################################################################
 # backup
-APP_SERVER_BASE_URL = "http://172.30.1.50:3000"
+APP_SERVER_BASE_URL = "http://192.168.202.2:3000"
 APP_SERVER_UUID = "ABCDEF00"
+
 def request_setting():
+    global latest_settings
     while True:
         try:
-
             url = f"{APP_SERVER_BASE_URL}/setting/{APP_SERVER_UUID}"
             response = requests.get(url)
         
             if response.status_code == 200:
-                settings = response.json()
-
-                execute_fan(settings["optimalTemperature"]) # fan
+                response_settings = response.json()
                 
-                socketio.emit('updateSettings', settings)
+                with settings_lock:
+                    if latest_settings != response_settings:
+                        
+                        latest_settings.update(response_settings)   
+                        print("\nsetting change, emit\nlatest_settings:", json.dumps(latest_settings, indent=4))
+                        execute_fan(latest_settings["optimalTemperature"]) # fan
+                        
+                        # autoDoor 
+                        doors_status["auto_door_open"] = latest_settings["autoDoorOpen"]
+                        doors_status["auto_door_close"] = latest_settings["autoDoorClose"]
+                        
+                        socketio.emit('updateSettings', latest_settings)
+                    
+                    else:
+                        print("Settings did not change, no emit.")
 
             else:
                 print(f"Failed to fetch settings from app-server: {response.status_code}")
@@ -197,61 +226,72 @@ def request_setting():
             
         time.sleep(5)
         
-# def test_uart_receive():
-#     while True:
-#         try:
-#             test_message = input("메시지를 입력하세요 (16진수 형식, 예: 200111): ").strip()
-#             if not test_message:
-#                 continue
-
-#             # TEST
-#             chunk = parse_protocol_message(test_message)
-
-#             if chunk:
-#                 first_byte = chunk[0]
-#                 high_4bit = (first_byte >> 4) & 0x0F
-
-#                 if high_4bit == 0xA:        # 디지털키
-#                     print("0xA")
-#                     # handle_digital_key(chunk)
-#                 elif high_4bit == 0x2:      # 차문 상태 정보
-#                     handle_door_status(chunk)
-#                 elif high_4bit == 0xB:      # 차량 제어
-#                     handle_vehicle_control(chunk)
-#                 else:
-#                     raise ValueError(f"Unknown high_4bit value: 0x{high_4bit:X} in chunk: {hex_data}")
-
-#         except serial.SerialException as e:
-#             print(f"SerialException occurred: {e}")
-#             print(traceback.format_exc())
-#         except ValueError as e:
-#             print(f"ValueError occurred: {e}")
-#             print(traceback.format_exc())
-#         except Exception as e:
-#             print(f"An unexpected error occurred: {e}")
-#             print(traceback.format_exc())
+# post 
+@socketio.on("changeSetting")
+def change_setting(data):
+    global latest_settings
+    print("Received updated setting from client:", data)
+    
+    with settings_lock:
+        key, value = next(iter(data.items()))
+        if key in latest_settings and latest_settings[key] == value:
+            print(f"No change detected for {key}: {value}. Skipping POST request.")
+            return
+        
+        latest_settings.update(data)  
+        url = f"{APP_SERVER_BASE_URL}/setting/{APP_SERVER_UUID}"
+        
+        try:
             
-def uart_receive():
+            response = requests.patch(url, json=latest_settings, headers={"Content-Type": "application/json"})
+            
+            if response.status_code == 200:
+                print("Successfully sent settings to APP_SERVER:", response.json())
+            else:
+                print(f"Failed to send settings. Status code: {response.status_code}")
+                
+        except requests.exceptions.RequestException as e:
+            print(f"Error sending settings to APP_SERVER: {e}")
+    
+
+        
+@app.route('/settings', methods=['POST'])
+def setting_data():
+    if request.is_json:
+        received_data = request.get_json()
+        if DIGITAL_KEY_UUID == received_data["uuid"]:
+            print("received_data:", json.dumps(received_data, indent=4))
+            return jsonify({"status": "success", "data": received_data}), 200
+        else:
+            return jsonify({"status": "error", "message": "Invalid JSON"}), 400
+    else:
+        return jsonify({"status": "error", "message": "Invalid JSON"}), 400
+    
+##### 
+        
+def test_uart_receive():
     while True:
         try:
-            if ser.in_waiting > 0:
-                chunk = ser.read(ser.in_waiting)
-            
-                hex_data = [f"0x{byte:02X}" for byte in chunk]
-                print(f"[수신] {hex_data}")
+            test_message = input("메시지를 입력하세요 (16진수 형식, 예: 200111): ").strip()
+            if not test_message:
+                continue
 
-                if chunk:
-                    first_byte = chunk[0]
-                    high_4bit = (first_byte >> 4) & 0x0F
+            # TEST
+            chunk = parse_protocol_message(test_message)
 
-                    if high_4bit == 0xA:        # 디지털키
-                        handle_digital_key(chunk)
-                    elif high_4bit == 0x2:      # 차문 상태 정보
-                        handle_door_status(chunk)
-                    elif high_4bit == 0xB:      # 차량 제어
-                        handle_vehicle_control(chunk)
-                    else:
-                        raise ValueError(f"Unknown high_4bit value: 0x{high_4bit:X} in chunk: {hex_data}")
+            if chunk:
+                first_byte = chunk[0]
+                high_4bit = (first_byte >> 4) & 0x0F
+
+                if high_4bit == 0xA:          # digitalkey
+                    print("0xA")
+                    # handle_digital_key(chunk)
+                elif high_4bit == 0x2:        # door
+                    handle_door_status(chunk)
+                elif high_4bit == 0xB:        # power 
+                    handle_vehicle_control(chunk)
+                else:
+                    raise ValueError(f"Unknown high_4bit value: 0x{high_4bit:X} in chunk: ")
 
         except serial.SerialException as e:
             print(f"SerialException occurred: {e}")
@@ -262,6 +302,38 @@ def uart_receive():
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             print(traceback.format_exc())
+            
+# def uart_receive():
+#     while True:
+#         try:
+#             if ser.in_waiting > 0:
+#                 chunk = ser.read(ser.in_waiting)
+            
+#                 hex_data = [f"0x{byte:02X}" for byte in chunk]
+#                 print(f"[수신] {hex_data}")
+
+#                 if chunk:
+#                     first_byte = chunk[0]
+#                     high_4bit = (first_byte >> 4) & 0x0F
+
+#                     if high_4bit == 0xA:          # digitalkey
+#                         handle_digital_key(chunk)
+#                     elif high_4bit == 0x2:        # door
+#                         handle_door_status(chunk)
+#                     elif high_4bit == 0xB:        # power
+#                         handle_vehicle_control(chunk)
+#                     else:
+#                         raise ValueError(f"Unknown high_4bit value: 0x{high_4bit:X} in chunk: {hex_data}")
+
+#         except serial.SerialException as e:
+#             print(f"SerialException occurred: {e}")
+#             print(traceback.format_exc())
+#         except ValueError as e:
+#             print(f"ValueError occurred: {e}")
+#             print(traceback.format_exc())
+#         except Exception as e:
+#             print(f"An unexpected error occurred: {e}")
+#             print(traceback.format_exc())
 
 ########################################################################
 # {192.168.137.82}:5000/power_off
@@ -284,6 +356,20 @@ def power_off_command_rest():
 def power_on_command_rest():
     
     print("rest - power_on")
+    
+    try:
+        command = COMMANDS["power_on"]
+        ser.write(bytearray(command))
+        
+        print(f"Sent command via UART: {bytearray(command)}")
+        return jsonify({"status": "success", "message": "Door Lock Command"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
+@app.route('/power_on_nfc', methods=['POST'])
+def power_on_nfc_rest():
+    
+    print("rest - power_on_nfc")
     
     try:
         command = COMMANDS["power_on"]
@@ -316,58 +402,68 @@ def unlock_command_rest():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# {192.168.137.82}:5000/open_door
-@app.route('/open_door', methods=['POST'])
-def open_door_rest():
-    
-    print("restapi - open door")
-    
-    if doors_status["lock_status"] == 0:
-        print("doors lock")
-        return
-    
+## auto_door_open
+def remote_door_open(auto_door_open, lock_status):
+    print(f"auto_door_open:{auto_door_open}, lock_status:{lock_status}")
     try:
-
-        command = COMMANDS["open_door"](1)
-        ser.write(bytearray(command))  
-        print(f"Sent command via UART: {bytearray(command)}")
+        if auto_door_open == 0:
+            if lock_status == 0:
+                return jsonify({"status": "error", "message": "Door is locked. Cannot open."}), 400
+        else:
+            if lock_status == 0: 
+                unlock_command = COMMANDS["unlock"]
+                ser.write(bytearray(unlock_command))
+                print(f"Sent command via UART: {bytearray(unlock_command)}")
         
-        return jsonify({"status": "success", "message": "Door open Command"}), 200
+        open_command = COMMANDS["open_door"](1)
+        ser.write(bytearray(open_command))  
+        print(f"Sent command via UART: {bytearray(open_command)}")
+        
+        return jsonify({"status": "success", "message": "Door open Command"}), 200    
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+## auto_door_close
+def remote_door_close(auto_door_close, door1_status):
+    print(f"auto_door_open:{auto_door_close}, door1_status:{door1_status}")
+    try:
+        if auto_door_close == 0:
+            if door1_status == 0:
+                return jsonify({"status": "error", "message": "Door is closed."}), 400
+            else:
+                close_command = COMMANDS["close_door"](1)
+                ser.write(bytearray(close_command))
+                print(f"Sent command via UART: {bytearray(close_command)}")
+        else:
+            if door1_status == 1:
+                close_command = COMMANDS["close_door"](1)
+                ser.write(bytearray(close_command))  
+                print(f"Sent command via UART: {bytearray(close_command)}")
+                
+            lock_command = COMMANDS["lock"]
+            ser.write(bytearray(lock_command))
+            print(f"Sent command via UART: {bytearray(lock_command)}")
+                
+        
+        return jsonify({"status": "success", "message": "Door close Command"}), 200    
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
+# {192.168.137.82}:5000/open_door
+@app.route('/open_door', methods=['POST'])
+def open_door_rest():    
+    return remote_door_open(
+        doors_status["auto_door_open"],
+        doors_status["lock_status"]
+    )
 
 # {192.168.137.82}:5000/close_door
 @app.route('/close_door', methods=['POST'])
 def close_door_rest():
-    
-    print("restapi - close door ")
-    
-    if(doors_status["door_status"][1] == 0):
-        print("alreay close")
-        return
-    
-    try:
-        command = COMMANDS["close_door"](1)
-        
-        ser.write(bytearray(command))  
-        print(f"Sent command via UART: {bytearray(command)}")
-        
-        return jsonify({"status": "success", "message": "Door close Command"}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-# return 용
-@app.route('/settings', methods=['POST'])
-def setting_data():
-    if request.is_json:
-        received_data = request.get_json()
-        if DIGITAL_KEY_UUID == received_data["uuid"]:
-            print("receive_data :",received_data)
-            return jsonify({"status": "success", "data": received_data}), 200
-        else:
-            return jsonify({"status": "error", "message": "Invalid JSON"}), 400
-    else:
-        return jsonify({"status": "error", "message": "Invalid JSON"}), 400
+    return remote_door_close(
+        doors_status["auto_door_close"],
+        doors_status["door_status"][1]
+    )
     
 # Command
 @socketio.on('doorCommand')
@@ -438,7 +534,7 @@ def unlock_command_socketio(data=None):
 
 @socketio.on('powerCommand')
 def power_command_socketio():
-    global power_status  # 전역 변수 선언
+    global power_status  
 
     if power_status == 0: 
         command = COMMANDS["power_on"]
@@ -457,10 +553,10 @@ def power_command_socketio():
 @socketio.on('connect')
 def connect():
     print('Client connected')
-    global thread, thread_request 
-    with thread_lock:
-        if thread is None:
-            thread = socketio.start_background_task(uart_receive)
+    global thread_uart, thread_request 
+    with background_lock:
+        if thread_uart is None:
+            thread_uart = socketio.start_background_task(test_uart_receive)
             
         if thread_request is None :
             thread_request = socketio.start_background_task(request_setting)
@@ -468,10 +564,13 @@ def connect():
     DFInit()
 
     initial_data = {
-        "power_status": power_status,
-        "lock_status": doors_status["lock_status"],
-        "door_status": doors_status["door_status"]
+        "power_status": power_status
     }
+    
+    initial_data.update(latest_settings)
+    initial_data.update(doors_status)
+    
+    print("initial_data:", json.dumps(initial_data, indent=4))
     
     socketio.emit('initialize', initial_data)
 
