@@ -49,7 +49,10 @@ COMMANDS = {
     "open_door": lambda door_id: [0x12, door_id, 0xFF],  
     "close_door": lambda door_id: [0x13, door_id, 0xFF], 
     "power_on": [0xB1, 0xFF],       
-    "power_off": [0xB0, 0xFF],        
+    "power_off": [0xB0, 0xFF],
+    "power_on_command":[0xB1],
+    "power_off_command":[0xB0]
+    
 }
 
 # UART setting
@@ -154,12 +157,14 @@ def handle_digital_key(chunk):
 
 def handle_vehicle_control(chunk): # 0xB0
     
+    print("handle vehicle_control")
     global power_status
 
     if len(chunk) != 1:
         raise ValueError(f"Invalid chunk length for vehicle_control: {len(chunk)}")
     
     power_command = (chunk[0]) & 0x0F # 0, 1
+    print("power_command:",power_command)
 
     if power_command not in [0, 1]:
         raise ValueError(f"Invalid power command: {power_command} (Expected 0 or 1)")
@@ -269,61 +274,29 @@ def setting_data():
     
 ##### 
         
-def test_uart_receive():
-    while True:
-        try:
-            test_message = input("메시지를 입력하세요 (16진수 형식, 예: 200111): ").strip()
-            if not test_message:
-                continue
-
-            # TEST
-            chunk = parse_protocol_message(test_message)
-
-            if chunk:
-                first_byte = chunk[0]
-                high_4bit = (first_byte >> 4) & 0x0F
-
-                if high_4bit == 0xA:          # digitalkey
-                    print("0xA")
-                    # handle_digital_key(chunk)
-                elif high_4bit == 0x2:        # door
-                    handle_door_status(chunk)
-                elif high_4bit == 0xB:        # power 
-                    handle_vehicle_control(chunk)
-                else:
-                    raise ValueError(f"Unknown high_4bit value: 0x{high_4bit:X} in chunk: ")
-
-        except serial.SerialException as e:
-            print(f"SerialException occurred: {e}")
-            print(traceback.format_exc())
-        except ValueError as e:
-            print(f"ValueError occurred: {e}")
-            print(traceback.format_exc())
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-            print(traceback.format_exc())
-            
-# def uart_receive():
+# def test_uart_receive():
 #     while True:
 #         try:
-#             if ser.in_waiting > 0:
-#                 chunk = ser.read(ser.in_waiting)
-            
-#                 hex_data = [f"0x{byte:02X}" for byte in chunk]
-#                 print(f"[수신] {hex_data}")
+#             test_message = input("메시지를 입력하세요 (16진수 형식, 예: 200111): ").strip()
+#             if not test_message:
+#                 continue
 
-#                 if chunk:
-#                     first_byte = chunk[0]
-#                     high_4bit = (first_byte >> 4) & 0x0F
+#             # TEST
+#             chunk = parse_protocol_message(test_message)
 
-#                     if high_4bit == 0xA:          # digitalkey
-#                         handle_digital_key(chunk)
-#                     elif high_4bit == 0x2:        # door
-#                         handle_door_status(chunk)
-#                     elif high_4bit == 0xB:        # power
-#                         handle_vehicle_control(chunk)
-#                     else:
-#                         raise ValueError(f"Unknown high_4bit value: 0x{high_4bit:X} in chunk: {hex_data}")
+#             if chunk:
+#                 first_byte = chunk[0]
+#                 high_4bit = (first_byte >> 4) & 0x0F
+
+#                 if high_4bit == 0xA:          # digitalkey
+#                     print("0xA")
+#                     # handle_digital_key(chunk)
+#                 elif high_4bit == 0x2:        # door
+#                     handle_door_status(chunk)
+#                 elif high_4bit == 0xB:        # power 
+#                     handle_vehicle_control(chunk)
+#                 else:
+#                     raise ValueError(f"Unknown high_4bit value: 0x{high_4bit:X} in chunk: ")
 
 #         except serial.SerialException as e:
 #             print(f"SerialException occurred: {e}")
@@ -334,6 +307,38 @@ def test_uart_receive():
 #         except Exception as e:
 #             print(f"An unexpected error occurred: {e}")
 #             print(traceback.format_exc())
+            
+def uart_receive():
+    while True:
+        try:
+            if ser.in_waiting > 0:
+                chunk = ser.read(ser.in_waiting)
+            
+                hex_data = [f"0x{byte:02X}" for byte in chunk]
+                print(f"[수신] {hex_data}")
+
+                if chunk:
+                    first_byte = chunk[0]
+                    high_4bit = (first_byte >> 4) & 0x0F
+
+                    if high_4bit == 0xA:          # digitalkey
+                        handle_digital_key(chunk)
+                    elif high_4bit == 0x2:        # door
+                        handle_door_status(chunk)
+                    elif high_4bit == 0xB:        # power
+                        handle_vehicle_control(chunk)
+                    else:
+                        raise ValueError(f"Unknown high_4bit value: 0x{high_4bit:X} in chunk: {hex_data}")
+
+        except serial.SerialException as e:
+            print(f"SerialException occurred: {e}")
+            print(traceback.format_exc())
+        except ValueError as e:
+            print(f"ValueError occurred: {e}")
+            print(traceback.format_exc())
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            print(traceback.format_exc())
 
 ########################################################################
 # {192.168.137.82}:5000/power_off
@@ -342,11 +347,14 @@ def power_off_command_rest():
     
     print("restapi - power_off ")
     
+    if power_status == 0: 
+        command = COMMANDS["power_on_command"]
+    else:
+        command = COMMANDS["power_off_command"]
+
     try:
-        command = COMMANDS["power_off"]
-        ser.write(bytearray(command))
         
-        print(f"Sent command via UART: {bytearray(command)}")
+        handle_vehicle_control(bytearray(command))
         return jsonify({"status": "success", "message": "Door Lock Command"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -357,12 +365,17 @@ def power_on_command_rest():
     
     print("rest - power_on")
     
+    if power_status == 0: 
+        command = COMMANDS["power_on_command"]
+    else:
+        command = COMMANDS["power_off_command"]
+
     try:
-        command = COMMANDS["power_on"]
-        ser.write(bytearray(command))
         
-        print(f"Sent command via UART: {bytearray(command)}")
-        return jsonify({"status": "success", "message": "Door Lock Command"}), 200
+        handle_vehicle_control(bytearray(command))
+
+    
+        socketio.emit('powerCommandSuccess', {'status': power_status, 'command': command})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
     
@@ -452,18 +465,40 @@ def remote_door_close(auto_door_close, door1_status):
 # {192.168.137.82}:5000/open_door
 @app.route('/open_door', methods=['POST'])
 def open_door_rest():    
-    return remote_door_open(
-        doors_status["auto_door_open"],
-        doors_status["lock_status"]
-    )
+    print("restapi - open door")
+    
+    if doors_status["lock_status"] == 0:
+        print("doors lock")
+        return jsonify({"status": "success", "message": "Door close Command"}), 400
+    
+    try:
+
+        command = COMMANDS["open_door"](1)
+        ser.write(bytearray(command))  
+        print(f"Sent command via UART: {bytearray(command)}")
+        
+        return jsonify({"status": "success", "message": "Door open Command"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # {192.168.137.82}:5000/close_door
 @app.route('/close_door', methods=['POST'])
 def close_door_rest():
-    return remote_door_close(
-        doors_status["auto_door_close"],
-        doors_status["door_status"][1]
-    )
+    print("restapi - close door ")
+    
+    if(doors_status["door_status"][1] == 0):
+        print("alreay close")
+        return
+    
+    try:
+        command = COMMANDS["close_door"](1)
+        
+        ser.write(bytearray(command))  
+        print(f"Sent command via UART: {bytearray(command)}")
+        
+        return jsonify({"status": "success", "message": "Door close Command"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
     
 # Command
 @socketio.on('doorCommand')
@@ -535,16 +570,17 @@ def unlock_command_socketio(data=None):
 @socketio.on('powerCommand')
 def power_command_socketio():
     global power_status  
-
+    
+    print("power")
+    
     if power_status == 0: 
-        command = COMMANDS["power_on"]
+        command = COMMANDS["power_on_command"]
     else:
-        command = COMMANDS["power_off"] 
+        command = COMMANDS["power_off_command"]
 
     try:
-        ser.write(bytearray(command))  
-
-        print(f"Sent command via UART: {bytearray(command)}")
+        
+        handle_vehicle_control(bytearray(command))
         socketio.emit('powerCommandSuccess', {'status': power_status, 'command': command})
     except Exception as e:
         socketio.emit('powerCommandError', {'status': 'error', 'message': str(e)})
@@ -556,7 +592,7 @@ def connect():
     global thread_uart, thread_request 
     with background_lock:
         if thread_uart is None:
-            thread_uart = socketio.start_background_task(test_uart_receive)
+            thread_uart = socketio.start_background_task(uart_receive)
             
         if thread_request is None :
             thread_request = socketio.start_background_task(request_setting)

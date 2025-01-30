@@ -43,7 +43,7 @@ def DFInit():
     time.sleep(0.2)
     DFSendInitialConfig()  # SD 카드 선택
     time.sleep(1)
-    DFSetVolume(20)   # 볼륨 설정 (0~30)
+    DFSetVolume(25)   # 볼륨 설정 (0~30)
     time.sleep(0.2)
 
 
@@ -73,6 +73,6 @@ def DFPlayTrack(track_number):
 if __name__ == "__main__":
     
     DFInit()   # 초기화 및 볼륨 설정
- #   time.sleep(0.2)
+ #   time.DFPlayTrack0.2)
     DFPlayTrack(2)
 
